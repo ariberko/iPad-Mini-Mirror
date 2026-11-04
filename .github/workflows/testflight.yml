@@ -1,0 +1,97 @@
+name: TestFlight
+
+# Builds, signs and uploads Mirror to TestFlight.
+# Setup (one time): see docs/SETUP.md
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      APP_BUNDLE_ID: ${{ vars.APP_BUNDLE_ID || 'com.ariberko.mirror' }}
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check setup
+        run: |
+          missing=0
+          for name in TEAM_ID ASC_KEY_ID ASC_ISSUER_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing GitHub secret for $name. Follow docs/SETUP.md."
+              missing=1
+            fi
+          done
+          if [ -z "${{ secrets.ASC_PRIVATE_KEY }}" ]; then
+            echo "::error::Missing GitHub secret ASC_PRIVATE_KEY. Follow docs/SETUP.md."
+            missing=1
+          fi
+          exit $missing
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Install App Store Connect API key
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s\n' "$ASC_PRIVATE_KEY" > "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8" >> "$GITHUB_ENV"
+
+      - name: Archive (signed)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Mirror.xcodeproj \
+            -scheme Mirror \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Mirror.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            APP_BUNDLE_ID="$APP_BUNDLE_ID" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            -quiet \
+            archive
+
+      - name: Upload to TestFlight
+        run: |
+          set -o pipefail
+          plutil -replace teamID -string "$TEAM_ID" ExportOptions.plist
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$RUNNER_TEMP/Mirror.xcarchive" \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          echo "### Uploaded build $BUILD_NUMBER to TestFlight" >> "$GITHUB_STEP_SUMMARY"
+          echo "It shows up in the TestFlight app in about 5 to 15 minutes, after Apple finishes processing." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove API key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/keys"

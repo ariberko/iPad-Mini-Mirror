@@ -1,0 +1,74 @@
+name: Mirror
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    # Change these two (or pass them on the command line / in GitHub settings).
+    APP_BUNDLE_ID: com.ariberko.mirror
+    DEVELOPMENT_TEAM: ""
+    APP_GROUP_ID: group.$(APP_BUNDLE_ID)
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    TARGETED_DEVICE_FAMILY: "1,2"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    DEAD_CODE_STRIPPING: YES
+
+targets:
+  Mirror:
+    type: application
+    platform: iOS
+    sources:
+      - path: Mirror
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_NAME: Mirror
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID)
+        INFOPLIST_FILE: Mirror/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Mirror/Mirror.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+    dependencies:
+      - target: MirrorBroadcast
+        embed: true
+        codeSign: true
+
+  MirrorBroadcast:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Broadcast
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_NAME: MirrorBroadcast
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID).broadcast
+        INFOPLIST_FILE: Broadcast/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Broadcast/MirrorBroadcast.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+    dependencies:
+      - sdk: ReplayKit.framework
+
+schemes:
+  Mirror:
+    build:
+      targets:
+        Mirror: all
+        MirrorBroadcast: all
+    run:
+      config: Debug
+    archive:
+      config: Release
