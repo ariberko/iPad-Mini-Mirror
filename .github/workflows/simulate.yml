@@ -33,24 +33,32 @@ jobs:
       - name: Run the simulation
         run: scripts/simulate.sh "$RUNNER_TEMP/simulation"
 
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulation
+          path: ${{ runner.temp }}/simulation
+
       - name: Publish results to a branch
         if: always()
+        timeout-minutes: 4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: simulation/${{ github.run_number }}
         run: |
           cd "$RUNNER_TEMP/simulation" || exit 0
           echo "Simulation of ${GITHUB_SHA} on $(date -u)" > README.md
+          # Small copies of the videos for the branch; full ones are in the artifact.
+          for v in *.mp4; do
+            [ -f "$v" ] || continue
+            xcrun avconvert --preset Preset960x540 --source "$v" --output "small-$v" >/dev/null 2>&1 || true
+            rm -f "$v"
+          done
           git init -q
           git checkout -q -b "$BRANCH"
           git add -A
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit -qm "Simulation for ${GITHUB_SHA::7}"
-          git push -q "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
+          GIT_TERMINAL_PROMPT=0 perl -e 'alarm 150; exec @ARGV' git -c credential.helper= push -q "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
           echo "Results: branch $BRANCH" >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: simulation
-          path: ${{ runner.temp }}/simulation

@@ -9,14 +9,6 @@ OUT="${1:-$PWD/simulation}"
 BUNDLE="${APP_BUNDLE_ID:-com.ariberko.mirror}"
 rm -rf "$OUT" && mkdir -p "$OUT/logs"
 
-echo "▶︎ Building for Simulator"
-xcodegen generate >/dev/null
-xcodebuild \
-  -project Mirror.xcodeproj -scheme Mirror -configuration Debug \
-  -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath build/sim \
-  APP_BUNDLE_ID="$BUNDLE" CODE_SIGNING_ALLOWED=NO \
-  -quiet build
 APP="build/sim/Build/Products/Debug-iphonesimulator/Mirror.app"
 
 # Newest iOS runtime first, then the first device whose name matches.
@@ -34,6 +26,14 @@ defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false || 
 for DEVICE in "$IPHONE" "$IPAD"; do
   xcrun simctl boot "$DEVICE" 2>/dev/null || true
 done
+echo "▶︎ Building for Simulator"
+xcodegen generate >/dev/null
+xcodebuild \
+  -project Mirror.xcodeproj -scheme Mirror -configuration Debug \
+  -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath build/sim \
+  APP_BUNDLE_ID="$BUNDLE" CODE_SIGNING_ALLOWED=NO \
+  -quiet build
 # First boot can be slow on CI (data migration). Wait for both in parallel, up to 20 minutes.
 xcrun simctl bootstatus "$IPHONE" -b >/dev/null 2>&1 & B1=$!
 xcrun simctl bootstatus "$IPAD" -b >/dev/null 2>&1 & B2=$!
