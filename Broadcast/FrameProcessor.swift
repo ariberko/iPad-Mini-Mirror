@@ -30,10 +30,10 @@ final class FrameProcessor {
 
         // 1. Scale down first (cheaper to rotate a smaller picture).
         if longSide > maxLongSide {
-            let scale = Double(maxLongSide) / Double(longSide)
-            let targetWidth = Self.even(Double(width) * scale)
-            let targetHeight = Self.even(Double(height) * scale)
-            guard let scaled = scale(buffer, width: targetWidth, height: targetHeight) else { return nil }
+            let factor = Double(maxLongSide) / Double(longSide)
+            let targetWidth = Self.even(Double(width) * factor)
+            let targetHeight = Self.even(Double(height) * factor)
+            guard let scaled = resize(buffer, width: targetWidth, height: targetHeight) else { return nil }
             buffer = scaled
         }
 
@@ -61,7 +61,7 @@ final class FrameProcessor {
         }
     }
 
-    private func scale(_ source: CVPixelBuffer, width: Int, height: Int) -> CVPixelBuffer? {
+    private func resize(_ source: CVPixelBuffer, width: Int, height: Int) -> CVPixelBuffer? {
         if transferSession == nil {
             var session: VTPixelTransferSession?
             VTPixelTransferSessionCreate(allocator: kCFAllocatorDefault, pixelTransferSessionOut: &session)
@@ -79,7 +79,7 @@ final class FrameProcessor {
     private func rotate(_ source: CVPixelBuffer, rotation: CFString) -> CVPixelBuffer? {
         if rotationSession == nil {
             var session: VTPixelRotationSession?
-            VTPixelRotationSessionCreate(allocator: kCFAllocatorDefault, pixelRotationSessionOut: &session)
+            VTPixelRotationSessionCreate(kCFAllocatorDefault, &session)
             rotationSession = session
             currentRotation = nil
         }
@@ -98,7 +98,7 @@ final class FrameProcessor {
             height: swapsSides ? width : height,
             format: CVPixelBufferGetPixelFormatType(source)) else { return nil }
 
-        guard VTPixelRotationSessionRotateImage(rotationSession, sourceBuffer: source, destinationBuffer: output) == noErr else {
+        guard VTPixelRotationSessionRotateImage(rotationSession, source, output) == noErr else {
             return nil
         }
         CVBufferPropagateAttachments(source, output)
