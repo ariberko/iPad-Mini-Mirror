@@ -1,0 +1,65 @@
+name: Publish simulation
+
+# Takes the `simulation` artifact from a Simulate run, shrinks the videos and
+# pushes screenshots, small videos and logs to a `simulation/<run>` branch.
+on:
+  workflow_run:
+    workflows: [Simulate]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Simulate run ID
+        required: true
+  push:
+    branches: ['claude/**']
+    paths: ['.github/workflows/publish-simulation.yml']
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  # Used when this file itself is pushed: the last Simulate run with results.
+  DEFAULT_RUN: '41795229825'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Pick run
+        id: run
+        run: echo "id=${{ github.event.workflow_run.id || inputs.run_id || env.DEFAULT_RUN }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: simulation
+          path: sim
+          run-id: ${{ steps.run.outputs.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Shrink videos
+        working-directory: sim
+        run: |
+          sudo apt-get install -y -qq ffmpeg >/dev/null
+          for v in *.mp4; do
+            [ -f "$v" ] || continue
+            ffmpeg -loglevel error -y -i "$v" -vf "fps=30,scale='min(720,iw)':-2" \
+              -c:v libx264 -preset veryfast -crf 28 -pix_fmt yuv420p -movflags +faststart -an "small-$v" || true
+            rm -f "$v"
+          done
+          ls -lh . logs || true
+
+      - name: Push to a branch
+        working-directory: sim
+        env:
+          BRANCH: simulation/run-${{ steps.run.outputs.id }}
+        run: |
+          echo "Simulation results from run ${{ steps.run.outputs.id }}" > README.md
+          git init -q
+          git checkout -q -b "$BRANCH"
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "Simulation results"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "$BRANCH"
+          echo "Results: branch $BRANCH" >> "$GITHUB_STEP_SUMMARY"
