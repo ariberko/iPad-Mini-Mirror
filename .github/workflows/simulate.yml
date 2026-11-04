@@ -19,7 +19,7 @@ concurrency:
 jobs:
   simulate:
     runs-on: macos-latest
-    timeout-minutes: 55
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v5
 
@@ -35,6 +35,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         if: always()
+        timeout-minutes: 6
         with:
           name: simulation
           path: ${{ runner.temp }}/simulation

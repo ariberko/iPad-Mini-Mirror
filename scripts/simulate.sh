@@ -144,9 +144,18 @@ stop_recording
 echo "▶︎ Collecting app logs"
 for DEVICE in "$IPHONE" "$IPAD"; do
   NAME=$([ "$DEVICE" = "$IPHONE" ] && echo iphone || echo ipad)
-  xcrun simctl spawn "$DEVICE" log show --last 30m --style compact \
+  xcrun simctl spawn "$DEVICE" log show --last 30m --style compact --info \
     --predicate 'process == "Mirror"' > "$OUT/logs/app-$NAME.log" 2>&1 || true
 done
 
+echo "▶︎ Shutting down simulators"
+stop_recording
+xcrun simctl terminate "$IPHONE" "$BUNDLE" >/dev/null 2>&1 || true
+xcrun simctl terminate "$IPAD" "$BUNDLE" >/dev/null 2>&1 || true
+xcrun simctl shutdown all >/dev/null 2>&1 &
+SD=$!
+for _ in $(seq 1 60); do kill -0 "$SD" 2>/dev/null || break; sleep 1; done
+pkill -f "simctl io" 2>/dev/null || true
+
 echo "▶︎ Done. Files:"
-ls -1 "$OUT"
+ls -lh "$OUT" "$OUT/logs"
