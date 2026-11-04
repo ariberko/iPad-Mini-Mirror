@@ -35,7 +35,10 @@ for DEVICE in "$IPHONE" "$IPAD"; do
   xcrun simctl boot "$DEVICE" 2>/dev/null || true
 done
 for DEVICE in "$IPHONE" "$IPAD"; do
-  xcrun simctl bootstatus "$DEVICE" -b >/dev/null
+  xcrun simctl bootstatus "$DEVICE" -b >/dev/null &
+  BOOT=$!
+  for _ in $(seq 1 240); do kill -0 "$BOOT" 2>/dev/null || break; sleep 1; done
+  kill "$BOOT" 2>/dev/null || true
   xcrun simctl ui "$DEVICE" appearance light
   xcrun simctl status_bar "$DEVICE" override --time "9:41" --dataNetwork wifi --wifiMode active \
     --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
@@ -46,9 +49,29 @@ sleep 5
 launch() { # device logname args...
   local device=$1 name=$2; shift 2
   xcrun simctl terminate "$device" "$BUNDLE" 2>/dev/null || true
-  xcrun simctl launch --stdout="$OUT/logs/$name.log" --stderr="$OUT/logs/$name.log" "$device" "$BUNDLE" "$@" >/dev/null
+  sleep 0.5
+  xcrun simctl launch --terminate-running-process --stdout="$OUT/logs/$name.log" --stderr="$OUT/logs/$name.log" \
+    "$device" "$BUNDLE" "$@" >/dev/null 2>"$OUT/logs/launch-$name.err" || echo "  ⚠️ launch $name failed"
+  echo "  ▸ launched $name"
 }
-shot() { xcrun simctl io "$1" screenshot "$OUT/$2.png" >/dev/null 2>&1 && echo "  📸 $2"; }
+shot() { xcrun simctl io "$1" screenshot "$OUT/$2.png" >/dev/null 2>&1 && echo "  📸 $2" || echo "  ⚠️ $2 failed"; }
+
+# Background jobs in scripts ignore Ctrl-C (SIGINT) unless job control is on.
+# The recorder needs SIGINT to finish the video file, so turn job control on.
+set -m
+REC=""
+start_recording() { # device file
+  xcrun simctl io "$1" recordVideo --codec=h264 --force "$OUT/$2" >"$OUT/logs/record-$2.log" 2>&1 &
+  REC=$!
+}
+stop_recording() {
+  [ -n "$REC" ] || return 0
+  kill -INT "$REC" 2>/dev/null || true
+  for _ in $(seq 1 30); do kill -0 "$REC" 2>/dev/null || break; sleep 0.5; done
+  kill -KILL "$REC" 2>/dev/null || true
+  REC=""
+}
+trap stop_recording EXIT
 
 PHONE_ARGS=(-MirrorDemoName "Ari's iPhone" -MirrorDemoCode 135790)
 PAD_ARGS=(-MirrorDemoName "Ari's iPad" -MirrorDemoCode 482913)
@@ -87,8 +110,7 @@ shot "$IPHONE" 06-iphone-inbox
 echo "▶︎ Live: iPhone screen on the iPad"
 launch "$IPAD" live1-ipad -MirrorDemo home -MirrorDemoSendFile -MirrorDemoStats "${PAD_ARGS[@]}"
 sleep 3
-xcrun simctl io "$IPAD" recordVideo --codec=h264 --force "$OUT/video-iphone-on-ipad.mp4" >/dev/null 2>&1 &
-REC=$!
+start_recording "$IPAD" video-iphone-on-ipad.mp4
 sleep 1
 launch "$IPHONE" live1-iphone -MirrorDemo sender -MirrorDemoPairWith 482913 "${PHONE_ARGS[@]}"
 sleep 9
@@ -96,22 +118,19 @@ shot "$IPAD" 07-ipad-showing-iphone
 shot "$IPHONE" 07-iphone-sharing
 sleep 7
 shot "$IPAD" 08-ipad-file-sent
-kill -INT "$REC" 2>/dev/null || true
-wait "$REC" 2>/dev/null || true
+stop_recording
 
 echo "▶︎ Live: iPad screen on the iPhone"
 launch "$IPHONE" live2-iphone -MirrorDemo home -MirrorDemoStats "${PHONE_ARGS[@]}"
 sleep 3
-xcrun simctl io "$IPHONE" recordVideo --codec=h264 --force "$OUT/video-ipad-on-iphone.mp4" >/dev/null 2>&1 &
-REC=$!
+start_recording "$IPHONE" video-ipad-on-iphone.mp4
 sleep 1
 launch "$IPAD" live2-ipad -MirrorDemo sender -MirrorDemoPairWith 135790 "${PAD_ARGS[@]}"
 sleep 11
 shot "$IPHONE" 09-iphone-showing-ipad
 shot "$IPAD" 09-ipad-sharing
 sleep 3
-kill -INT "$REC" 2>/dev/null || true
-wait "$REC" 2>/dev/null || true
+stop_recording
 
 echo "▶︎ Done. Files:"
 ls -1 "$OUT"

@@ -19,7 +19,7 @@ concurrency:
 jobs:
   simulate:
     runs-on: macos-latest
-    timeout-minutes: 40
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 
