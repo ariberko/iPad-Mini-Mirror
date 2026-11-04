@@ -31,7 +31,7 @@ enum DemoMode {
 
     static func log(_ message: String) {
         guard isEnabled else { return }
-        print("[MirrorDemo] \(message)")
+        NSLog("[MirrorDemo] %@", message)
     }
 
     /// Puts the shared settings into a known state before anything else reads them.

@@ -34,24 +34,33 @@ defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false || 
 for DEVICE in "$IPHONE" "$IPAD"; do
   xcrun simctl boot "$DEVICE" 2>/dev/null || true
 done
+# First boot can be slow on CI (data migration). Wait for both in parallel, up to 20 minutes.
+xcrun simctl bootstatus "$IPHONE" -b >/dev/null 2>&1 & B1=$!
+xcrun simctl bootstatus "$IPAD" -b >/dev/null 2>&1 & B2=$!
+for i in $(seq 1 240); do
+  if ! kill -0 "$B1" 2>/dev/null && ! kill -0 "$B2" 2>/dev/null; then break; fi
+  [ $((i % 12)) -eq 0 ] && echo "  … still booting ($((i * 5))s)"
+  sleep 5
+done
+kill "$B1" "$B2" 2>/dev/null || true
+echo "▶︎ Simulators ready"
 for DEVICE in "$IPHONE" "$IPAD"; do
-  xcrun simctl bootstatus "$DEVICE" -b >/dev/null &
-  BOOT=$!
-  for _ in $(seq 1 240); do kill -0 "$BOOT" 2>/dev/null || break; sleep 1; done
-  kill "$BOOT" 2>/dev/null || true
-  xcrun simctl ui "$DEVICE" appearance light
+  xcrun simctl ui "$DEVICE" appearance light || true
   xcrun simctl status_bar "$DEVICE" override --time "9:41" --dataNetwork wifi --wifiMode active \
-    --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
+    --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 || true
   xcrun simctl install "$DEVICE" "$APP"
 done
 sleep 5
 
 launch() { # device logname args...
   local device=$1 name=$2; shift 2
-  xcrun simctl terminate "$device" "$BUNDLE" 2>/dev/null || true
+  xcrun simctl terminate "$device" "$BUNDLE" >/dev/null 2>&1 || true
   sleep 0.5
-  xcrun simctl launch --terminate-running-process --stdout="$OUT/logs/$name.log" --stderr="$OUT/logs/$name.log" \
-    "$device" "$BUNDLE" "$@" >/dev/null 2>"$OUT/logs/launch-$name.err" || echo "  ⚠️ launch $name failed"
+  # Never let a stuck launch block the run.
+  xcrun simctl launch "$device" "$BUNDLE" "$@" >"$OUT/logs/launch-$name.txt" 2>&1 &
+  local pid=$!
+  for _ in $(seq 1 40); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+  kill "$pid" 2>/dev/null || true
   echo "  ▸ launched $name"
 }
 shot() { xcrun simctl io "$1" screenshot "$OUT/$2.png" >/dev/null 2>&1 && echo "  📸 $2" || echo "  ⚠️ $2 failed"; }
@@ -131,6 +140,13 @@ shot "$IPHONE" 09-iphone-showing-ipad
 shot "$IPAD" 09-ipad-sharing
 sleep 3
 stop_recording
+
+echo "▶︎ Collecting app logs"
+for DEVICE in "$IPHONE" "$IPAD"; do
+  NAME=$([ "$DEVICE" = "$IPHONE" ] && echo iphone || echo ipad)
+  xcrun simctl spawn "$DEVICE" log show --last 30m --style compact \
+    --predicate 'process == "Mirror"' > "$OUT/logs/app-$NAME.log" 2>&1 || true
+done
 
 echo "▶︎ Done. Files:"
 ls -1 "$OUT"
