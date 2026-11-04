@@ -27,6 +27,13 @@ targets:
     sources:
       - path: Mirror
       - path: Shared
+      # The streaming engine is also built into the app, so demo mode can
+      # stream from the Simulator (which can't run a screen broadcast).
+      - path: Broadcast
+        excludes:
+          - SampleHandler.swift
+          - Info.plist
+          - "*.entitlements"
     settings:
       base:
         PRODUCT_NAME: Mirror
@@ -49,6 +56,8 @@ targets:
     platform: iOS
     sources:
       - path: Broadcast
+        excludes:
+          - "*.entitlements"
       - path: Shared
     settings:
       base:

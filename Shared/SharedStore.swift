@@ -126,6 +126,11 @@ final class SharedStore {
         return resetPairingCode()
     }
 
+    func setPairingCode(_ code: String) {
+        guard code.count == 6, code.allSatisfy(\.isNumber) else { return }
+        defaults.set(code, forKey: Key.pairingCode)
+    }
+
     @discardableResult
     func resetPairingCode() -> String {
         let code = String(format: "%06d", Int.random(in: 0...999_999))

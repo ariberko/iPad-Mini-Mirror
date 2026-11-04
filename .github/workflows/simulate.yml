@@ -1,0 +1,56 @@
+name: Simulate
+
+# Runs Mirror on an iPhone and an iPad Simulator, takes screenshots and records
+# the two devices mirroring each other. Results go to a `simulation/<run>` branch
+# and to the run's artifacts.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths: ['Mirror/**', 'Shared/**', 'Broadcast/**', 'scripts/simulate.sh', '.github/workflows/simulate.yml', 'project.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: simulate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulate:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Run the simulation
+        run: scripts/simulate.sh "$RUNNER_TEMP/simulation"
+
+      - name: Publish results to a branch
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: simulation/${{ github.run_number }}
+        run: |
+          cd "$RUNNER_TEMP/simulation" || exit 0
+          echo "Simulation of ${GITHUB_SHA} on $(date -u)" > README.md
+          git init -q
+          git checkout -q -b "$BRANCH"
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "Simulation for ${GITHUB_SHA::7}"
+          git push -q "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
+          echo "Results: branch $BRANCH" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulation
+          path: ${{ runner.temp }}/simulation

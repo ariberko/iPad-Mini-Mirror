@@ -52,6 +52,7 @@ final class AppModel {
     }
 
     init() {
+        DemoMode.prepareStore()
         deviceName = store.deviceName
         pairingCode = store.pairingCode
         unseenInboxCount = store.unseenInboxCount
@@ -92,6 +93,8 @@ final class AppModel {
         openInboxObserver = NotificationCenter.default.addObserver(forName: .mirrorOpenInbox, object: nil, queue: .main) { [weak self] _ in
             self?.openInbox()
         }
+
+        DemoDriver.start(with: self)
     }
 
     // MARK: Lifecycle

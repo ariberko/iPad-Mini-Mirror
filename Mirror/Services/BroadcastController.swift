@@ -36,7 +36,8 @@ final class BroadcastMonitor {
 
     func refresh() {
         status = SharedStore.shared.broadcastStatus
-        isCaptured = UIScreen.main.isCaptured
+        // The simulator can't broadcast, so the demo sender counts as capturing.
+        isCaptured = UIScreen.main.isCaptured || DemoMode.isSender
     }
 
     func stop() {

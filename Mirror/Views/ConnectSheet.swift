@@ -54,6 +54,7 @@ struct ConnectSheet: View {
         .sensoryFeedback(.success, trigger: pairedTrigger)
         .sensoryFeedback(.error, trigger: wrongCodeAttempts)
         .task { await check() }
+        .task(id: step) { await typeDemoCodeIfNeeded() }
         .onChange(of: model.broadcast.status.state) { _, state in
             if state == .live, model.isSharing(to: device) {
                 dismiss()
@@ -246,6 +247,17 @@ struct ConnectSheet: View {
             withAnimation { step = .enterCode }
         case .unreachable:
             withAnimation { step = .unreachable }
+        }
+    }
+
+    /// Demo mode only: types the code like a person, for the simulation recording.
+    private func typeDemoCodeIfNeeded() async {
+        guard step == .enterCode, code.isEmpty, let demoCode = DemoMode.typeCode else { return }
+        try? await Task.sleep(for: .seconds(6))
+        for digit in demoCode {
+            guard step == .enterCode, !Task.isCancelled else { return }
+            code.append(digit)
+            try? await Task.sleep(for: .milliseconds(280))
         }
     }
 
